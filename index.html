@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>软包装单价计算器 Pro (完整版)</title>
+    <title>软包装单价计算器 Pro (带历史记录版)</title>
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 引入 React 和 ReactDOM -->
@@ -25,15 +25,29 @@
         body {
             font-family: system-ui, -apple-system, sans-serif;
         }
+        /* 简单的滚动条样式 */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo } = React;
+        const { useState, useMemo, useEffect } = React;
 
-        // --- 图标组件 (内联 SVG 以替代 lucide-react) ---
+        // --- 图标组件 ---
         const IconBase = ({ children, size = 18, className = "" }) => (
             <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
                 {children}
@@ -51,6 +65,8 @@
         const X = (props) => <IconBase {...props}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></IconBase>;
         const ImageIcon = (props) => <IconBase {...props}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></IconBase>;
         const Layers = (props) => <IconBase {...props}><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></IconBase>;
+        const HistoryIcon = (props) => <IconBase {...props}><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></IconBase>;
+        const Save = (props) => <IconBase {...props}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></IconBase>;
 
         // --- 主程序 ---
         const SoftPackCalculator = () => {
@@ -114,6 +130,67 @@
               ]
             }
           ]);
+
+          // --- State: 历史记录 ---
+          const [history, setHistory] = useState([]);
+          const [showHistory, setShowHistory] = useState(false);
+          const [currentName, setCurrentName] = useState('');
+
+          // --- 历史记录功能 ---
+          useEffect(() => {
+            const savedHistory = localStorage.getItem('softPackCalcHistory');
+            if (savedHistory) {
+                try {
+                    setHistory(JSON.parse(savedHistory));
+                } catch (e) {
+                    console.error("Failed to parse history", e);
+                }
+            }
+          }, []);
+
+          const saveRecord = () => {
+              if (!currentName.trim()) {
+                  alert("请输入方案名称");
+                  return;
+              }
+              const newRecord = {
+                  id: Date.now(),
+                  name: currentName,
+                  date: new Date().toLocaleString(),
+                  data: {
+                      // 注意：bagSpecs中的image如果是blob URL，无法保存，在此忽略图片以防报错或过期
+                      bagSpecs: { ...bagSpecs, image: null }, 
+                      globalCosts,
+                      parts,
+                      plates
+                  }
+              };
+              const newHistory = [newRecord, ...history];
+              setHistory(newHistory);
+              localStorage.setItem('softPackCalcHistory', JSON.stringify(newHistory));
+              setCurrentName('');
+              alert("方案已保存");
+          };
+
+          const loadRecord = (record) => {
+              if (confirm(`确定要加载方案 "${record.name}" 吗？\n当前未保存的修改将会丢失。`)) {
+                  const d = record.data;
+                  if (d.bagSpecs) setBagSpecs({ ...d.bagSpecs, image: null }); // 不加载图片
+                  if (d.globalCosts) setGlobalCosts(d.globalCosts);
+                  if (d.parts) setParts(d.parts);
+                  if (d.plates) setPlates(d.plates);
+                  setCurrentName(record.name);
+                  setShowHistory(false);
+              }
+          };
+
+          const deleteRecord = (id) => {
+              if (confirm("确定要删除这条记录吗？")) {
+                  const newHistory = history.filter(h => h.id !== id);
+                  setHistory(newHistory);
+                  localStorage.setItem('softPackCalcHistory', JSON.stringify(newHistory));
+              }
+          };
 
           // --- 操作函数: 版费 ---
           const addPlate = () => {
@@ -377,26 +454,79 @@
             <div className="min-h-screen bg-gray-100 p-4 font-sans text-gray-800">
               <div className="max-w-6xl mx-auto space-y-8">
                 
-                {/* 顶部：最终结果栏 */}
-                <header className="bg-blue-700 text-white p-6 rounded-xl shadow-lg flex flex-col md:flex-row justify-between items-center gap-4">
-                  <div>
-                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                      <Calculator size={24} /> 软包装极简计算器 (Pro)
-                    </h1>
-                    <p className="text-blue-200 text-sm mt-1">直接输入展开平面尺寸：高 × 宽</p>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <div className="text-right">
-                      <div className="text-xs text-blue-200 mb-1">单只克重 (含拉链/胶水修正)</div>
-                      <div className="text-xl font-mono flex items-center justify-end gap-2">
-                         <span>{result.totalWeight.toFixed(2)} g</span>
+                {/* 顶部：最终结果栏 + 历史记录 */}
+                <header className="bg-blue-700 text-white rounded-xl shadow-lg overflow-hidden">
+                  <div className="p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div>
+                      <h1 className="text-2xl font-bold flex items-center gap-2">
+                        <Calculator size={24} /> 软包装极简计算器 (Pro)
+                      </h1>
+                      <div className="flex gap-4 mt-2 text-sm text-blue-200 items-center">
+                          <span>输入展开平面尺寸：高 × 宽</span>
                       </div>
                     </div>
-                    <div className="text-right bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/20">
-                      <div className="text-xs text-yellow-300 font-bold">最终单价 (含税含损耗)</div>
-                      <div className="text-4xl font-mono font-bold">¥ {result.finalPrice.toFixed(4)}</div>
+                    <div className="flex items-center gap-6">
+                      <div className="text-right">
+                        <div className="text-xs text-blue-200 mb-1">单只克重 (含修正)</div>
+                        <div className="text-xl font-mono flex items-center justify-end gap-2">
+                           <span>{result.totalWeight.toFixed(2)} g</span>
+                        </div>
+                      </div>
+                      <div className="text-right bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/20">
+                        <div className="text-xs text-yellow-300 font-bold">最终单价 (含税含损耗)</div>
+                        <div className="text-4xl font-mono font-bold">¥ {result.finalPrice.toFixed(4)}</div>
+                      </div>
                     </div>
                   </div>
+
+                  {/* 历史记录工具栏 */}
+                  <div className="bg-blue-800/50 p-3 px-6 border-t border-blue-600 flex flex-wrap items-center justify-between gap-4">
+                     <div className="flex items-center gap-2 w-full md:w-auto">
+                        <input 
+                          type="text" 
+                          placeholder="给当前计算方案命名..." 
+                          value={currentName}
+                          onChange={e => setCurrentName(e.target.value)}
+                          className="px-3 py-1.5 rounded text-gray-800 text-sm w-48 md:w-64 outline-none focus:ring-2 focus:ring-yellow-400"
+                        />
+                        <button onClick={saveRecord} className="flex items-center gap-1 bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded text-sm transition-colors font-bold shadow-sm">
+                           <Save size={16} /> 保存方案
+                        </button>
+                     </div>
+                     
+                     <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 text-blue-100 hover:text-white transition-colors text-sm">
+                        <HistoryIcon size={16} /> 
+                        {showHistory ? '隐藏历史记录' : '查看历史记录'}
+                        <span className="bg-blue-900 px-1.5 rounded-full text-xs">{history.length}</span>
+                     </button>
+                  </div>
+                  
+                  {/* 历史记录面板 */}
+                  {showHistory && (
+                    <div className="bg-gray-50 text-gray-800 p-4 border-b-4 border-yellow-400 max-h-60 overflow-y-auto custom-scrollbar">
+                        <h3 className="font-bold text-gray-700 mb-3 flex items-center gap-2">
+                            <HistoryIcon size={18}/> 已保存的计算方案
+                        </h3>
+                        {history.length === 0 ? (
+                            <div className="text-gray-400 text-sm py-4 text-center">暂无保存记录</div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {history.map(record => (
+                                    <div key={record.id} className="bg-white p-3 rounded border border-gray-200 shadow-sm hover:shadow-md transition-shadow flex justify-between items-center group">
+                                        <div>
+                                            <div className="font-bold text-blue-700">{record.name}</div>
+                                            <div className="text-xs text-gray-400">{record.date}</div>
+                                        </div>
+                                        <div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => loadRecord(record)} className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-100 hover:bg-blue-100">读取</button>
+                                            <button onClick={() => deleteRecord(record.id)} className="text-xs text-red-400 hover:text-red-600 px-1"><Trash2 size={14}/></button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                  )}
                 </header>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -421,6 +551,7 @@
                                <label className="cursor-pointer flex flex-col items-center w-full h-full justify-center">
                                  <ImageIcon size={24} className="text-gray-400 mb-2" />
                                  <span className="text-xs text-gray-500">点击上传袋型图片</span>
+                                 <div className="text-[10px] text-gray-400 mt-1">(图片不保存至历史记录)</div>
                                  <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
                                </label>
                              )}
